@@ -33,11 +33,42 @@
     .btn-wa{background:linear-gradient(45deg,var(--green),#2ecc71)}
     .btn-camera{background:linear-gradient(45deg,#2980b9,#3498db)}
     .btn-save{background:linear-gradient(45deg,#16a085,#1abc9c)}
+    .btn-edit{background:linear-gradient(45deg,#9b59b6,#8e44ad)}
+    
+    /* Edit Modal Styles */
+    .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;overflow:auto;background-color:rgba(0,0,0,0.5);backdrop-filter:blur(5px)}
+    .modal-content{background:#fff;margin:5% auto;padding:0;width:90%;max-width:600px;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:modalFadeIn 0.3s}
+    .modal-header{background:linear-gradient(45deg,#9b59b6,#8e44ad);color:#fff;padding:20px;border-radius:12px 12px 0 0}
+    .modal-header h2{margin:0;font-size:1.4rem;font-weight:400}
+    .close{color:#fff;float:right;font-size:28px;font-weight:bold;cursor:pointer;opacity:0.8;line-height:1}
+    .close:hover{opacity:1}
+    .modal-body{padding:25px}
+    .form-group{margin-bottom:20px}
+    .form-group label{display:block;margin-bottom:8px;font-weight:600;color:#2c3e50}
+    .form-group input{width:100%;padding:12px;border:2px solid #e0e6ed;border-radius:8px;font-size:14px;transition:border-color 0.3s}
+    .form-group input:focus{outline:none;border-color:var(--accent)}
+    .edit-actions{text-align:right;padding-top:15px;border-top:1px solid #eee}
+    .btn-cancel{background:linear-gradient(45deg,#95a5a6,#7f8c8d)}
+    .btn-save-edit{background:linear-gradient(45deg,#27ae60,#2ecc71)}
+    
+    /* Edit button in table */
+    .edit-btn{background:linear-gradient(45deg,#9b59b6,#8e44ad);color:#fff;border:none;padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12px;margin-left:5px}
+    .edit-btn:hover{opacity:0.9}
+    
+    @keyframes modalFadeIn{
+      from{opacity:0;transform:translateY(-50px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+    
     /* Camera preview */
     #preview{margin-top:12px;text-align:center}
     #photo{max-width:100%;border-radius:8px;display:none;margin-top:10px}
     /* small screens keep horizontal scroll for stats */
-    @media (max-width:540px){ .stat-card{min-width:200px} }
+    @media (max-width:540px){ 
+      .stat-card{min-width:200px} 
+      .modal-content{width:95%;margin:2% auto}
+      .modal-body{padding:20px}
+    }
   </style>
 </head>
 <body>
@@ -55,7 +86,7 @@
         <div class="table-container">
           <table id="attendanceTable" aria-label="attendance table">
             <thead>
-              <tr><th style="width:60px">No</th><th>Nama Taruna</th><th style="width:120px">NRP</th><th style="width:160px">Status</th></tr>
+              <tr><th style="width:60px">No</th><th>Nama Taruna</th><th style="width:120px">NRP</th><th style="width:160px">Status</th><th style="width:80px">Aksi</th></tr>
             </thead>
             <tbody id="attendanceBody"></tbody>
           </table>
@@ -103,15 +134,42 @@
 
       <!-- ACTION -->
       <div class="btn-row">
+        <button class="btn btn-edit" onclick="toggleEditMode()">✏️ Edit Nama + NRP</button>
         <button class="btn btn-reset" onclick="resetStatus()">🔄 Reset Absensi</button>
         <button class="btn btn-wa" onclick="sendWhatsApp()">📲 Kirim Rekapan via WhatsApp</button>
       </div>
     </div>
   </div>
 
+  <!-- Edit Modal -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="close" onclick="closeEditModal()">&times;</span>
+        <h2>✏️ Edit Data Taruna</h2>
+      </div>
+      <div class="modal-body">
+        <form id="editForm">
+          <div class="form-group">
+            <label for="editNama">Nama Taruna:</label>
+            <input type="text" id="editNama" name="nama" required>
+          </div>
+          <div class="form-group">
+            <label for="editNrp">NRP:</label>
+            <input type="text" id="editNrp" name="nrp" required>
+          </div>
+          <div class="edit-actions">
+            <button type="button" class="btn btn-cancel" onclick="closeEditModal()">❌ Batal</button>
+            <button type="submit" class="btn btn-save-edit">💾 Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
 <script>
 /* ===== DATA TARUNA (lengkap 40) ===== */
-const tarunaData = [
+let tarunaData = [
   {no:1,nama:"Ade James Bill Kevin Hati",nrp:"59231115241"},
   {no:2,nama:"Afwan Fauzan S",nrp:"59231115242"},
   {no:3,nama:"Ahmad Irfan Pebrivan",nrp:"59231115484"},
@@ -154,25 +212,104 @@ const tarunaData = [
   {no:40,nama:"Zakarias Lede Bulu",nrp:"59231115314"}
 ];
 
+let isEditMode = false;
+let currentEditIndex = -1;
+
 /* ===== INIT TABLE ===== */
 function initializeTable(){
   const tbody = document.getElementById('attendanceBody');
   tbody.innerHTML = '';
-  tarunaData.forEach(t=>{
+  tarunaData.forEach((t,index)=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${t.no}</td>
-      <td>${t.nama}</td>
-      <td>${t.nrp}</td>
+      <td id="nama_${index}">${t.nama}</td>
+      <td id="nrp_${index}">${t.nrp}</td>
       <td>
         <select id="status_${t.no}" onchange="updateStats()">
           <option value="absen">❌ Tidak Hadir</option>
           <option value="hadir">✅ Hadir</option>
           <option value="izin">🟡 Izin</option>
         </select>
+      </td>
+      <td>
+        <button class="edit-btn" onclick="openEditModal(${index})" style="display:${isEditMode ? 'inline-block' : 'none'}">✏️</button>
       </td>`;
     tbody.appendChild(tr);
   });
+}
+
+/* ===== EDIT MODE FUNCTIONS ===== */
+function toggleEditMode(){
+  isEditMode = !isEditMode;
+  const editBtns = document.querySelectorAll('.edit-btn');
+  const toggleBtn = document.querySelector('.btn-edit');
+  
+  if(isEditMode){
+    editBtns.forEach(btn => btn.style.display = 'inline-block');
+    toggleBtn.innerHTML = '❌ Selesai Edit';
+    toggleBtn.style.background = 'linear-gradient(45deg,#e74c3c,#c0392b)';
+  } else {
+    editBtns.forEach(btn => btn.style.display = 'none');
+    toggleBtn.innerHTML = '✏️ Edit Nama + NRP';
+    toggleBtn.style.background = 'linear-gradient(45deg,#9b59b6,#8e44ad)';
+  }
+}
+
+function openEditModal(index){
+  currentEditIndex = index;
+  const taruna = tarunaData[index];
+  
+  document.getElementById('editNama').value = taruna.nama;
+  document.getElementById('editNrp').value = taruna.nrp;
+  document.getElementById('editModal').style.display = 'block';
+  
+  // Focus on nama field
+  setTimeout(() => document.getElementById('editNama').focus(), 100);
+}
+
+function closeEditModal(){
+  document.getElementById('editModal').style.display = 'none';
+  currentEditIndex = -1;
+  document.getElementById('editForm').reset();
+}
+
+// Handle edit form submission
+document.getElementById('editForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  
+  if(currentEditIndex === -1) return;
+  
+  const newNama = document.getElementById('editNama').value.trim();
+  const newNrp = document.getElementById('editNrp').value.trim();
+  
+  if(!newNama || !newNrp){
+    alert('Nama dan NRP harus diisi!');
+    return;
+  }
+  
+  // Update data
+  tarunaData[currentEditIndex].nama = newNama;
+  tarunaData[currentEditIndex].nrp = newNrp;
+  
+  // Update display
+  document.getElementById(`nama_${currentEditIndex}`).textContent = newNama;
+  document.getElementById(`nrp_${currentEditIndex}`).textContent = newNrp;
+  
+  // Update stats (in case name changed)
+  updateStats();
+  
+  closeEditModal();
+  
+  alert('✅ Data berhasil diperbarui!');
+});
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+  const modal = document.getElementById('editModal');
+  if (event.target === modal) {
+    closeEditModal();
+  }
 }
 
 /* ===== UPDATE STATS & LISTS ===== */
